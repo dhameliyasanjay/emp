@@ -1,0 +1,176 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use App\Models\employee\Employee;
+class Salaryslip extends Model
+{
+    use HasFactory;
+    protected $table = 'salary_slip';
+
+    public function getdatatable(){
+        $requestData = $_REQUEST;
+        $columns = array(
+            0 => 'salary_slip.id',
+            1 => 'myemployee.firstname',
+            2 => 'myemployee.lastname',
+            3 => 'salary_slip.month',
+            4 => 'salary_slip.year'
+
+        );
+        $query = Salaryslip ::from('salary_slip')
+                    ->join("myemployee","myemployee.id","=","salary_slip.employee")
+                    ->join("employee_department","employee_department.id","=","salary_slip.empDepartment")
+                    ->join("employee_designation","employee_designation.id","=","salary_slip.empDesignation")
+                    ->where("salary_slip.is_deleted","No");
+
+
+        if (!empty($requestData['search']['value'])) {   // if there is a search parameter, $requestData['search']['value'] contains search parameter
+            $searchVal = $requestData['search']['value'];
+            $query->where(function($query) use ($columns, $searchVal, $requestData) {
+                $flag = 0;
+                foreach ($columns as $key => $value) {
+                    $searchVal = $requestData['search']['value'];
+                    if ($requestData['columns'][$key]['searchable'] == 'true') {
+                        if ($flag == 0) {
+                            $query->where($value, 'like', '%' . $searchVal . '%');
+                            $flag = $flag + 1;
+                        } else {
+                            $query->orWhere($value, 'like', '%' . $searchVal . '%');
+                        }
+                    }
+                }
+            });
+        }
+
+        $temp = $query->orderBy($columns[$requestData['order'][0]['column']], $requestData['order'][0]['dir']);
+
+        $totalData = count($temp->get());
+        $totalFiltered = count($temp->get());
+
+        $resultArr = $query->skip($requestData['start'])
+                ->take($requestData['length'])
+                ->select('salary_slip.id','employee_department.department','employee_designation.designation','myemployee.firstname','myemployee.lastname','salary_slip.month','salary_slip.year')
+                ->get();
+        $data = array();
+        $i = 0;
+        foreach ($resultArr as $row) {
+            $month= ["","January","February","March","April","May","June","July","August","September","October","November","December"];
+
+//            $actionhtml = '<a href="javascript:;" data-id="' . $row["id"] . '"  class="btn btn-icon sendMail" title="Send mail"><i class="fa fa-envelope text-info"></i></a>'
+            $actionhtml = '<a href="' . route('employee-salaryslip-download', $row['id']) . '"  class="btn btn-icon " title="Download Salary Slip"><i class="fa fa-download text-success" ></i></a>'
+            .'<a href="' . route('employee-salaryslip-view', $row['id']) . '" class="btn btn-icon" title="View Salary Slip Details"><i class="fa fa-eye text-primary" > </i></a>'
+            .'<a href="' . route('employee-salaryslip-edit', $row['id']) . '" class="btn btn-icon" title="Edit Salary Slip"><i class="fa fa-edit text-warning"> </i></a>'
+            .'<a href="#" data-toggle="modal" data-target="#deleteModel" class="btn btn-icon  deleteSalarySlip" data-id="' . $row["id"] . '" ><i class="fa fa-trash text-danger" ></i></a>';
+
+            $i++;
+            $nestedData = array();
+            $nestedData[] = $i;
+            $nestedData[] = ucfirst($row['firstname'])." " .ucfirst($row['lastname']);
+            $nestedData[] = ucfirst($row['department']);
+            $nestedData[] = ucfirst($row['designation']);
+            $nestedData[] = $month[$row['month']]." - " .$row['year'];
+            $nestedData[] = $actionhtml;
+            $data[] = $nestedData;
+        }
+        $json_data = array(
+            "draw" => intval($requestData['draw']), // for every request/draw by clientside , they send a number as a parameter, when they recieve a response/data they first check the draw number, so we are sending same number in draw.
+            "recordsTotal" => intval($totalData), // total number of records
+            "recordsFiltered" => intval($totalFiltered), // total number of records after searching, if there is no searching then totalFiltered = totalData
+            "data" => $data   // total data array
+        );
+        return $json_data;
+    }
+
+    public function addSalaryslip($request){
+        $checkSalarySlip = Salaryslip::where("month",$request->input('month'))
+                                    ->where("year",$request->input('year'))
+                                    ->where("employee",$request->input('employee'))
+                                    ->count();
+        if($checkSalarySlip != 0){
+            return "exits";
+        }else{
+            $ojSalaryslip = new Salaryslip();
+            $ojSalaryslip->empDepartment = $request->input('empDepartment');
+            $ojSalaryslip->empDesignation = $request->input('empDesignation');
+            $ojSalaryslip->employee = $request->input('employee');
+            $ojSalaryslip->month = $request->input('month');
+            $ojSalaryslip->year = $request->input('year');
+            $ojSalaryslip->wd = $request->input('wd');
+            $ojSalaryslip->lop = $request->input('lop');
+            $ojSalaryslip->basic = $request->input('basic');
+            $ojSalaryslip->hra_pr = $request->input('hra_pr');
+            $ojSalaryslip->hra = $request->input('hra');
+            $ojSalaryslip->pt_pr = $request->input('pro_tax_pr');
+            $ojSalaryslip->pt = $request->input('pro_tax');
+            $ojSalaryslip->income_tax_pr = $request->input('income_tax_pr');
+            $ojSalaryslip->income_tax = $request->input('income_tax');
+            $ojSalaryslip->pf_pr = $request->input('pf_pr');
+            $ojSalaryslip->pf = $request->input('pf');
+            $ojSalaryslip->pay_date = date("Y-m-d", strtotime($request->input('pay_salary')));
+            $ojSalaryslip->created_at = date("Y-m-d h:i:s");
+            $ojSalaryslip->updated_at = date("Y-m-d h:i:s");
+            if($ojSalaryslip->save()){
+                return "true";
+            }else{
+                return "false";
+            }
+        }
+    }
+    public function editSalaryslip($request){
+
+        $checkSalarySlip = Salaryslip::where("month",$request->input('month'))
+                                    ->where("year",$request->input('year'))
+                                    ->where("employee",$request->input('employee'))
+                                    ->where("id","!=",$request->input('editId'))
+                                    ->count();
+        if($checkSalarySlip != 0){
+            return "exits";
+        }else{
+            $ojSalaryslip = Salaryslip::find($request->input('editId'));
+            $ojSalaryslip->empDepartment = $request->input('empDepartment');
+            $ojSalaryslip->empDesignation = $request->input('empDesignation');
+            $ojSalaryslip->employee = $request->input('employee');
+            $ojSalaryslip->month = $request->input('month');
+            $ojSalaryslip->year = $request->input('year');
+            $ojSalaryslip->wd = $request->input('wd');
+            $ojSalaryslip->lop = $request->input('lop');
+            $ojSalaryslip->basic = $request->input('basic');
+            $ojSalaryslip->hra_pr = $request->input('hra_pr');
+            $ojSalaryslip->hra = $request->input('hra');
+            $ojSalaryslip->pt_pr = $request->input('pro_tax_pr');
+            $ojSalaryslip->pt = $request->input('pro_tax');
+            $ojSalaryslip->income_tax_pr = $request->input('income_tax_pr');
+            $ojSalaryslip->income_tax = $request->input('income_tax');
+            $ojSalaryslip->pf_pr = $request->input('pf_pr');
+            $ojSalaryslip->pf = $request->input('pf');
+            $ojSalaryslip->pay_date = date("Y-m-d", strtotime($request->input('pay_salary')));
+            $ojSalaryslip->updated_at = date("Y-m-d h:i:s");
+            if($ojSalaryslip->save()){
+                return "true";
+            }else{
+                return "false";
+            }
+        }
+    }
+
+    public function getSalaryslipDetails($id){
+        return Salaryslip ::from('salary_slip')
+                            ->join("myemployee","myemployee.id","=","salary_slip.employee")
+                            ->join("employee_department","employee_department.id","=","salary_slip.empDepartment")
+                            ->join("employee_designation","employee_designation.id","=","salary_slip.empDesignation")
+                            ->where("salary_slip.id",$id)
+                            ->select("employee_department.department", "employee_designation.designation", "myemployee.firstname", "myemployee.lastname", "myemployee.emp_no", "salary_slip.hra", "salary_slip.pt", "salary_slip.income_tax_pr", "salary_slip.lop", "salary_slip.income_tax", "salary_slip.pf_pr", "salary_slip.pf", "myemployee.email", "salary_slip.empDepartment", "salary_slip.id", "salary_slip.empDesignation", "salary_slip.employee", "salary_slip.month", "salary_slip.year", "salary_slip.wd", "salary_slip.basic", "salary_slip.hra", "salary_slip.hra_pr", "salary_slip.pt_pr", "salary_slip.pay_date", "salary_slip.pt")
+                            ->get();
+    }
+
+    public function deleteSalarySlip($data){
+
+        $obj = Salaryslip::find($data['id']);
+        $obj->is_deleted = "Yes";
+        $obj->updated_at = date("Y-m-d h:i:s");
+        return $obj->save();
+    }
+}
